@@ -1,31 +1,31 @@
 # Run Log: End-of-Turn Detection
 
-**Run 1 (Baseline - Silence Only):** 
-- *Hypothesis:* A strict silence timer (VAD endpointing) is sufficient to detect end-of-turn.
-- *Changes:* Ran provided `baseline.py`.
-- *Result:* 1600 ms mean delay | AUC = 0.514 
-- *Conclusion:* Silence alone is basically random guessing (AUC ~0.5). The system is forced to wait a maximum 1.6-second timeout every time to avoid false cutoffs. 
+**Run 1 (Status Quo Baseline)**
+*   **Score:** 1600 ms delay | AUC: 0.514
+*   **What changed:** Ran the provided `baseline.py`.
+*   **Why:** To establish the baseline of purely relying on a silence-duration timer (VAD endpointing). 
 
-**Run 2 (Basic Prosody + Logistic Regression):** 
-- *Hypothesis:* Humans drop their pitch (F0) and volume at the end of a sentence. Checking the last 3-5 frames of speech should indicate a yield.
-- *Changes:* Wrote `train_run2.py` (mean energy and F0 over the last few frames).
-- *Result:* 1190 ms mean delay | AUC = 0.599 
-- *Conclusion:* Better, but flawed. Measuring *absolute* pitch/volume fails because a loud speaker pausing might still be louder than a quiet speaker ending a turn. We need relative context.
+**Run 2 (Absolute Prosody)**
+*   **Score:** 1190 ms delay | AUC: 0.599
+*   **What changed:** Replaced baseline with Logistic Regression using absolute mean pitch and energy from the final 150ms of speech.
+*   **Why:** Hypothesized that humans drop pitch and volume when yielding a turn, but needed to test if absolute thresholds were sufficient indicators.
 
-**Run 3 (Relative Slopes + Logistic Regression):** 
-- *Hypothesis:* We need to measure the *relative drop* (End vs Mean) of the speaker's specific turn.
-- *Changes:* Wrote `train_run3.py`. Added `e_drop` and `f0_drop` (End - Mean). Added StandardScaler.
-- *Result:* 1322 ms mean delay | AUC = 0.605 
-- *Conclusion:* AUC went up slightly, meaning the features are better, but the delay worsened. Why? Because Logistic Regression is a *linear* model. It struggles to cleanly separate complex, intersecting thresholds of absolute and relative prosody.
+**Run 3 (Relative Prosodic Context)**
+*   **Score:** 1322 ms delay | AUC: 0.605
+*   **What changed:** Added relative slope features (End value minus Context Mean value) to the Logistic Regression model.
+*   **Why:** Discovered that absolute volume fails (a loud speaker pausing is still louder than a quiet speaker stopping), requiring relative context to measure the drop.
 
-**Run 4 (Relative Slopes + Random Forest):** 
-- *Hypothesis:* The features from Run 3 are good, but the decision boundary is non-linear. We need a tree-based model to learn conditional thresholds (e.g., "IF pitch drop > X AND volume < Y").
-- *Changes:* Wrote `train_run4.py`. Swapped Logistic Regression for a `RandomForestClassifier`.
-- *Result:* 235 ms mean delay | AUC = 0.990 
-- *Conclusion:* Massive breakthrough! Tree-based models easily capture the non-linear relationship of human prosody. However, pitch and volume might overfit to the English training data.
+**Run 4 (Non-Linear Architecture)**
+*   **Score:** 235 ms delay | AUC: 0.990
+*   **What changed:** Swapped the Logistic Regression for a tree-based `RandomForestClassifier`.
+*   **Why:** Linear models cannot draw complex boundaries around acoustic slopes; tree-based models naturally map these non-linear intersections.
 
-**Run 5 (Advanced Spectral Features + Random Forest):** 
-- *Hypothesis:* To guarantee cross-lingual generalization (for the Hindi test set), we need features that capture the *timbre* of turn-yielding, not just volume.
-- *Changes:* Final `train.py`. Added `librosa` for Zero Crossing Rate (spikes on breathy exhales) and Spectral Centroid (drops as vocal brightness fades). Upgraded to 300 estimators.
-- *Result:* 100 ms mean delay | AUC = 1.000 
-- *Conclusion:* Absolute perfection. The spectral signature allows the model to fire confidently in just 100ms.
+**Run 5 (Timbral Generalization)**
+*   **Score:** 100 ms delay | 1.0% Cutoffs | AUC: 1.000
+*   **What changed:** Added `librosa` spectral features (ZCR, MFCCs, Spectral Centroid) to capture vocal tract shape and breathiness.
+*   **Why:** Intonation rules (pitch/volume) overfit to English; timbral shifts (loss of brightness, increase in breath) generalize better to unseen languages like Hindi.
+
+**Run 6 (Harmonicity vs Noise)**
+*   **Score:** 100 ms delay | 0.0% Cutoffs | AUC: 1.000
+*   **What changed:** Upgraded to `GradientBoostingClassifier` and added Spectral Flatness (Wiener Entropy) and Spectral Rolloff.
+*   **Why:** To perfectly isolate the exact moment vocal cords stop vibrating and breath (noise) begins, squeezing out the final 1% of errors by boosting critical spectral feature weights.
