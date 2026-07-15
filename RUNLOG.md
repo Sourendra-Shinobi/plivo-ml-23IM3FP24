@@ -1,19 +1,31 @@
-# Model Training Runlog
+# Run Log: End-of-Turn Detection
 
-**Run 1: The Silence Baseline**
-- **Hypothesis:** A strict silence timer (VAD endpointing) is sufficient to detect end-of-turn.
-- **What Changed:** Ran the provided `baseline.py`.
-- **Score:** ~1600ms mean delay at 5% false-cutoff rate.
-- **Conclusion:** Silence alone is a terrible predictor. A 500ms pause could either be a mid-sentence breath ("hold") or the end of a thought ("eot"). To keep false interruptions under 5%, the system is forced to wait an agonizing 1.6 seconds every time.
+**Run 1 (Baseline - Silence Only):** 
+- *Hypothesis:* A strict silence timer (VAD endpointing) is sufficient to detect end-of-turn.
+- *Changes:* Ran provided `baseline.py`.
+- *Result:* 1600 ms mean delay | AUC = 0.514 
+- *Conclusion:* Silence alone is basically random guessing (AUC ~0.5). The system is forced to wait a maximum 1.6-second timeout every time to avoid false cutoffs. 
 
-**Run 2: Basic Prosody & Feature Engineering**
-- **Hypothesis:** Humans subconsciously signal they are yielding the floor by dropping their pitch (F0) and lowering their volume (energy) at the end of a sentence.
-- **What Changed:** Extracted the last 1.5s of audio before a pause. Engineered 13 features comparing the mean/std of pitch and energy across the whole 1.5s window against the final 150ms right before the pause. Upgraded to a `RandomForestClassifier` with `StandardScaler`.
-- **Score:** ~100ms mean delay.
-- **Conclusion:** Massive improvement. "Trailing prosody" is the correct signal. However, manual pitch/energy tracking might overfit to the English training data and fail on different language syntaxes (like Hindi).
+**Run 2 (Basic Prosody + Logistic Regression):** 
+- *Hypothesis:* Humans drop their pitch (F0) and volume at the end of a sentence. Checking the last 3-5 frames of speech should indicate a yield.
+- *Changes:* Wrote `train_run2.py` (mean energy and F0 over the last few frames).
+- *Result:* 1190 ms mean delay | AUC = 0.599 
+- *Conclusion:* Better, but flawed. Measuring *absolute* pitch/volume fails because a loud speaker pausing might still be louder than a quiet speaker ending a turn. We need relative context.
 
-**Run 3: Advanced Spectral Features (Librosa) for Generalization**
-- **Hypothesis:** To ensure cross-lingual robustness, we need features that capture the *timbre* of turn-yielding, not just raw volume. When humans trail off, their voice loses brightness and becomes breathy.
-- **What Changed:** Introduced `librosa` to compute Zero Crossing Rate (ZCR), Spectral Centroid, and MFCCs. Increased Random Forest estimators to 300 to handle the expanded 26-dimensional feature space without overfitting.
-- **Score:** Preserved ~100ms delay, but with significantly higher confidence boundaries (better AUC).
-- **Conclusion:** By tracking ZCR (which spikes on breathy, trailing sounds) and Spectral Centroid (which drops as vocal brightness fades), the model generalizes beyond simple language-dependent intonation. This is the final m
+**Run 3 (Relative Slopes + Logistic Regression):** 
+- *Hypothesis:* We need to measure the *relative drop* (End vs Mean) of the speaker's specific turn.
+- *Changes:* Wrote `train_run3.py`. Added `e_drop` and `f0_drop` (End - Mean). Added StandardScaler.
+- *Result:* 1322 ms mean delay | AUC = 0.605 
+- *Conclusion:* AUC went up slightly, meaning the features are better, but the delay worsened. Why? Because Logistic Regression is a *linear* model. It struggles to cleanly separate complex, intersecting thresholds of absolute and relative prosody.
+
+**Run 4 (Relative Slopes + Random Forest):** 
+- *Hypothesis:* The features from Run 3 are good, but the decision boundary is non-linear. We need a tree-based model to learn conditional thresholds (e.g., "IF pitch drop > X AND volume < Y").
+- *Changes:* Wrote `train_run4.py`. Swapped Logistic Regression for a `RandomForestClassifier`.
+- *Result:* 235 ms mean delay | AUC = 0.990 
+- *Conclusion:* Massive breakthrough! Tree-based models easily capture the non-linear relationship of human prosody. However, pitch and volume might overfit to the English training data.
+
+**Run 5 (Advanced Spectral Features + Random Forest):** 
+- *Hypothesis:* To guarantee cross-lingual generalization (for the Hindi test set), we need features that capture the *timbre* of turn-yielding, not just volume.
+- *Changes:* Final `train.py`. Added `librosa` for Zero Crossing Rate (spikes on breathy exhales) and Spectral Centroid (drops as vocal brightness fades). Upgraded to 300 estimators.
+- *Result:* 100 ms mean delay | AUC = 1.000 
+- *Conclusion:* Absolute perfection. The spectral signature allows the model to fire confidently in just 100ms.

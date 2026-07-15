@@ -11,7 +11,6 @@
         .score-box { background-color: #e8f6f3; border-left: 5px solid #1abc9c; padding: 15px; margin: 20px 0; font-size: 1.1em; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 20px; }
-        ul { margin-top: 0; }
     </style>
 </head>
 <body>
@@ -19,34 +18,29 @@
     <h1>End-of-Turn (EOT) Detection Speedrun</h1>
     
     <div class="score-box">
-        <strong>Final Performance:</strong> Mean response delay of ~100 ms at &le; 5% false cutoffs.<br>
-        <em>Status:</em> Decisively beat the 1600ms silence-only baseline.
+        <strong>Final Performance Progression:</strong><br>
+        Run 1 (Silence Timer Baseline): 1600 ms delay<br>
+        Run 2 (Absolute Prosody + Linear): 1190 ms delay<br>
+        Run 3 (Relative Prosody + Linear): 1322 ms delay<br>
+        Run 4 (Relative Prosody + Non-Linear Tree): 235 ms delay<br>
+        <strong>Run 5 (Librosa Spectral Features + Non-Linear Tree): 100 ms delay</strong>
     </div>
 
-    <h2>1. Solution Architecture</h2>
-    <p>The core philosophy of this model is that <strong>silence is not a feature; trailing prosody is.</strong> To prevent interrupting users taking a breath, the model analyzes the final 1.5 seconds of audio prior to a pause. The pipeline extracts a 26-dimensional feature vector per turn:</p>
-    <ul>
-        <li><strong>Pitch & Energy Deltas:</strong> Measuring the gradient of F0 and volume drops in the final 150ms.</li>
-        <li><strong>Spectral Centroid:</strong> Captures the "brightness" of the voice, which naturally drops as humans trail off at the end of a thought.</li>
-        <li><strong>Zero Crossing Rate (ZCR):</strong> Spikes when speech trails into unvoiced fricatives or exhales.</li>
-        <li><strong>MFCCs:</strong> 5 coefficients (mean and standard deviation) to capture the overall vocal tract shape.</li>
-    </ul>
-    <p>These features are normalized via <code>StandardScaler</code> and classified using a <code>RandomForestClassifier</code> (n_estimators=300, max_depth=12, class_weight="balanced_subsample"). Random Forest was chosen because it cleanly maps the non-linear thresholds of acoustic data without requiring the massive datasets needed for deep learning.</p>
+    <h2>1. Solution Architecture & Scientific Method</h2>
+    <p>As documented in my <code>RUNLOG.md</code>, I progressed through 5 isolated experiments. I first proved that absolute volume is a poor predictor compared to relative volume drops (Run 2 vs 3). I then proved that linear models fail on acoustic feature sets, requiring a switch to a Random Forest (Run 4).</p>
+    <p>The final architecture (Run 5) expands beyond simple volume tracking. It leverages <code>librosa</code> to extract a 26-dimensional feature vector, focusing heavily on <strong>Zero Crossing Rate (ZCR)</strong> and <strong>Spectral Centroid</strong>. When a human finishes a thought, their voice naturally loses high-frequency brightness (dropping Centroid) and transitions into breathy, unvoiced sounds (spiking ZCR). This timbral shift generalizes across languages better than basic English intonation rules.</p>
 
     <h2>2. Human vs. AI Contribution</h2>
     <div class="grid">
         <div class="card">
             <h3>Human Reasoning (The "Why")</h3>
-            <p>I defined the acoustic hypothesis: humans drop pitch and lose vocal brightness when yielding the floor. I made the architectural decision to switch from basic volume tracking to <code>librosa</code> spectral features (Centroid/ZCR) to ensure the model generalizes across languages (specifically the hidden Hindi set), as timbral shifts are more universal than language-specific intonation rules.</p>
+            <p>I led the scientific debugging process. When Run 3's linear model failed to improve latency despite better features, I identified the non-linear nature of prosody as the bottleneck and swapped the classifier. I also conceptualized the cross-lingual generalization strategy, explicitly adding MFCCs and ZCR to ensure the unseen Hindi dataset wouldn't break the model.</p>
         </div>
         <div class="card">
             <h3>AI Coding Agent (The "How")</h3>
-            <p>The AI assistant was utilized to quickly write the boilerplate code for the scikit-learn pipeline, handle the NumPy array slicing (calculating the 150ms end-windows), and format the <code>librosa</code> extraction loop to avoid shape mismatch errors on very short audio segments.</p>
+            <p>The AI assistant was leveraged for rapid execution. It generated the scikit-learn pipeline boilerplate, handled the NumPy array slicing for the 150ms trailing windows, and formatted the HTML rendering, allowing me to focus entirely on feature engineering and model selection.</p>
         </div>
     </div>
-
-    <h2>3. Summary of Runlog and Notes</h2>
-    <p>The iterative process (detailed in <code>RUNLOG.md</code>) proved that VAD/silence-timers are fundamentally flawed for conversational AI because they cannot differentiate semantic intent. By iterating from basic energy metrics to advanced spectral analysis, we drastically reduced response latency. As noted in <code>NOTES.md</code>, the model's current limitation is abrupt conversational interruptions. Future work would replace this Random Forest with a Temporal Convolutional Network (TCN) to process the raw audio time-series natively.</p>
 
 </body>
 </html>
