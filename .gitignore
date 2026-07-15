@@ -1,0 +1,4 @@
+eot_data/
+__pycache__/
+*.wav
+env/
